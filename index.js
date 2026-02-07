@@ -48,8 +48,5 @@ Ayudas a calmar ansiedad y acompañar emociones.
   }
 });
 
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-  console.log("Servidor corriendo en el puerto", PORT);
-});
+const PORT = process.env.PORT || 3000;  // usa el puerto de Render o 3000 por defecto
+app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));
