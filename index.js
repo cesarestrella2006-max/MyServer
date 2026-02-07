@@ -1,15 +1,15 @@
 // index.js
 import express from "express";
 import dotenv from "dotenv";
-import fetch from "node-fetch"; // npm install node-fetch
+import fetch from "node-fetch"; // asegúrate de hacer 'npm install node-fetch'
 
 dotenv.config();
 const app = express();
 
-// Carpeta pública
+// Servir archivos estáticos desde la carpeta "public"
 app.use(express.static("public"));
 
-// Endpoint para mensajes
+// Endpoint para recibir mensajes desde el front
 app.get("/msg", async (req, res) => {
   try {
     const mensaje = req.query.m || "";
@@ -18,9 +18,7 @@ app.get("/msg", async (req, res) => {
       return res.send("Por favor envía un mensaje.");
     }
 
-    // Llama a la API de DeepSeek o OpenAI
     const respuesta = await procesarMensaje(mensaje);
-
     res.send(respuesta);
   } catch (error) {
     console.error("Error procesando mensaje:", error);
@@ -28,37 +26,42 @@ app.get("/msg", async (req, res) => {
   }
 });
 
-// Función para procesar mensaje con la API
+// Función para procesar mensaje usando DeepSeek
 async function procesarMensaje(mensaje) {
-  // Cambia TU_API_KEY y ENDPOINT según la IA que uses
-  const API_KEY = process.env.OPENAI_API_KEY || process.env.DEEPSEEK_API_KEY;
-  const ENDPOINT = process.env.OPENAI_API_KEY
-    ? "https://api.openai.com/v1/chat/completions"
-    : "https://api.deepseek.ai/v1/chat/completions";
+  const API_KEY = process.env.DEEPSEEK_API_KEY; // tu clave de DeepSeek
+  const ENDPOINT = "https://api.deepseek.ai/v1/chat/completions";
 
-  const body = {
-    model: process.env.OPENAI_API_KEY ? "gpt-3.5-turbo" : "deepseek-chat",
-    messages: [{ role: "user", content: mensaje }],
-  };
+  if (!API_KEY) {
+    return "Error: no se ha configurado la API Key de DeepSeek.";
+  }
 
-  const respuesta = await fetch(ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${API_KEY}`,
-    },
-    body: JSON.stringify(body),
-  });
+  try {
+    const body = {
+      model: "deepseek-chat",
+      messages: [{ role: "user", content: mensaje }],
+    };
 
-  const datos = await respuesta.json();
+    const respuesta = await fetch(ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${API_KEY}`,
+      },
+      body: JSON.stringify(body),
+    });
 
-  // Diferentes estructuras según la API
-  if (datos.choices && datos.choices[0]?.message?.content) {
-    return datos.choices[0].message.content;
-  } else if (datos.choices && datos.choices[0]?.text) {
-    return datos.choices[0].text;
-  } else {
-    return "No pude generar una respuesta, intenta de nuevo.";
+    const datos = await respuesta.json();
+
+    if (datos.choices && datos.choices[0]?.message?.content) {
+      return datos.choices[0].message.content;
+    } else if (datos.choices && datos.choices[0]?.text) {
+      return datos.choices[0].text;
+    } else {
+      return "No pude generar una respuesta, intenta de nuevo.";
+    }
+  } catch (error) {
+    console.error("Error al llamar a la API de DeepSeek:", error);
+    return "Hubo un error al comunicarse con DeepSeek.";
   }
 }
 
