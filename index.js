@@ -1,8 +1,9 @@
-import express from "express";
-import cors from "cors";
-import { Configuration, OpenAIApi } from "openai";
+// ================= LIBRERÍAS =================
+import express from 'express';
+import cors from 'cors';
+import { OpenAI } from 'openai';
 
-// ================= CONFIGURACIÓN =================
+// ================= CONFIG =================
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -11,52 +12,88 @@ app.use(express.urlencoded({ extended: true }));
 const PORT = process.env.PORT || 3000;
 
 // ================= OPENAI =================
-const configuration = new Configuration({
-  apiKey: process.env.OPENAI_API_KEY // asegúrate de poner tu API Key en Render
-});
-const openai = new OpenAIApi(configuration);
-
-// ================= ESTADO =================
-let ultimaRespuesta = "";
-let estadoEmocional = "neutro";
-
-// ================= FUNCIONES =================
-async function obtenerRespuestaNova(mensajeUsuario) {
-  try {
-    const prompt = `
-Eres Nova, una asistente emocional con ojos animados en pantalla OLED.
-Responde de manera comprensiva, empática y cálida.
-Usuario dice: "${mensajeUsuario}"
-Nova responde:
-    `;
-
-    const completion = await openai.createChatCompletion({
-      model: "gpt-3.5-turbo",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 150,
-      temperature: 0.8
-    });
-
-    let respuesta = completion.data.choices[0].message.content.trim();
-
-    // Ajusta estado emocional según palabras clave simples
-    const m = mensajeUsuario.toLowerCase();
-    if (m.includes("hola") || m.includes("hey") || m.includes("buenas")) estadoEmocional = "feliz";
-    else if (m.includes("cansada") || m.includes("agotada") || m.includes("estresada")) estadoEmocional = "triste";
-    else if (m.includes("ansiedad") || m.includes("nerviosa") || m.includes("no puedo respirar")) estadoEmocional = "calma";
-    else if (m.includes("adios") || m.includes("descansa") || m.includes("hasta luego")) estadoEmocional = "dormido";
-    else estadoEmocional = "neutro";
-
-    ultimaRespuesta = respuesta;
-    return respuesta;
-
-  } catch (err) {
-    console.error("Error OpenAI:", err);
-    return "Lo siento, tuve un error al procesar tu mensaje.";
-  }
+if (!process.env.OPENAI_API_KEY) {
+  console.error("ERROR: Debes configurar la variable de entorno OPENAI_API_KEY en Render.");
+  process.exit(1);
 }
 
-// ================= RUTAS =================
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// ================= ESTADO =================
+let estadoEmocional = "neutro";
+
+// ================= UTILIDADES =================
+function normalizar(t) {
+  t = t.toLowerCase();
+  t = t.replace(/á/g, "a").replace(/é/g, "e").replace(/í/g, "i");
+  t = t.replace(/ó/g, "o").replace(/ú/g, "u");
+  return t;
+}
+
+function respuestaAleatoria(lista) {
+  return lista[Math.floor(Math.random() * lista.length)];
+}
+
+// ================= INTELIGENCIA =================
+async function procesarMensaje(msg) {
+  msg = normalizar(msg);
+
+  const saludo = ["hola", "hey", "buenos", "buenas", "que tal", "holi"];
+  const cansancio = ["cansada","agotada","estresada","no puedo","harta","fatiga"];
+  const ansiedad = ["no puedo respirar","ansiosa","me duele","pecho","nerviosa","ansiedad"];
+  const despedida = ["adios","hasta luego","buenas noches","descansa"];
+
+  let respuesta = "Estoy aqui, cuentame un poco mas";
+
+  if (saludo.some(w => msg.includes(w))) {
+    estadoEmocional = "feliz";
+    respuesta = respuestaAleatoria([
+      "Hola, estoy aqui contigo 💙 cuentame como te sientes",
+      "Hey, me alegra verte, no estas sola",
+      "Hola, dime, que pasa por tu mente ahora mismo"
+    ]);
+  } else if (cansancio.some(w => msg.includes(w))) {
+    estadoEmocional = "triste";
+    respuesta = respuestaAleatoria([
+      "Siento que estes asi, a veces el cansancio pesa mucho, pero aqui estoy contigo",
+      "Respira, no tienes que cargar con todo sola",
+      "Es valido sentirse agotada, podemos ir poco a poco"
+    ]);
+  } else if (ansiedad.some(w => msg.includes(w))) {
+    estadoEmocional = "calma";
+    respuesta = respuestaAleatoria([
+      "Estoy aqui, vamos a respirar juntos, lento, no pasa nada",
+      "Tranquila, enfocate en mi voz, inhala despacio",
+      "No estas en peligro, vamos a calmarnos paso a paso"
+    ]);
+  } else if (despedida.some(w => msg.includes(w))) {
+    estadoEmocional = "dormido";
+    respuesta = respuestaAleatoria([
+      "Descansa, aqui estare cuando vuelvas",
+      "Buenas noches, cuidate mucho",
+      "Duerme tranquila, no estas sola"
+    ]);
+  }
+
+  // ================= OPCIONAL: OPENAI =================
+  // Si quieres que Nova use GPT-4 para respuestas más inteligentes:
+  /*
+  try {
+    const gpt = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: msg }],
+      max_tokens: 150,
+    });
+    respuesta = gpt.choices[0].message.content;
+  } catch (err) {
+    console.error("Error OpenAI:", err.message);
+  }
+  */
+
+  return respuesta;
+}
+
+// ================= PÁGINA WEB =================
 app.get("/", (req, res) => {
   const html = `
 <!DOCTYPE html>
@@ -64,10 +101,10 @@ app.get("/", (req, res) => {
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-body{background:#0f0f0f;color:white;font-family:sans-serif}
-#chat{height:70vh;overflow:auto;border:1px solid #333;padding:10px}
-input{width:80%}
-button{width:18%}
+body{background:#0f0f0f;color:white;font-family:sans-serif;}
+#chat{height:70vh;overflow:auto;border:1px solid #333;padding:10px;}
+input{width:80%;}
+button{width:18%;}
 </style>
 </head>
 <body>
@@ -76,31 +113,33 @@ button{width:18%}
 <input id="msg"><button onclick="enviar()">Enviar</button>
 
 <script>
-async function enviar(){
- let m=document.getElementById("msg").value;
- const r = await fetch("/msg?m="+encodeURIComponent(m));
- const t = await r.text();
- document.getElementById("chat").innerHTML += "<p><b>Tu:</b> "+m+"</p>";
- document.getElementById("chat").innerHTML += "<p><b>Nova:</b> "+t+"</p>";
- document.getElementById("msg").value="";
- document.getElementById("chat").scrollTop = document.getElementById("chat").scrollHeight;
+function enviar(){
+  let m=document.getElementById("msg").value;
+  fetch("/msg?m="+encodeURIComponent(m))
+  .then(r=>r.text())
+  .then(t=>{
+    document.getElementById("chat").innerHTML += "<p><b>Tu:</b> "+m+"</p>";
+    document.getElementById("chat").innerHTML += "<p><b>Nova:</b> "+t+"</p>";
+    document.getElementById("msg").value="";
+    document.getElementById("chat").scrollTop = document.getElementById("chat").scrollHeight;
+  });
 }
 </script>
 </body>
-</html>
-  `;
+</html>`;
   res.send(html);
 });
 
+// ================= RUTA MENSAJE =================
 app.get("/msg", async (req, res) => {
-  const mensaje = req.query.m || "";
-  const respuesta = await obtenerRespuestaNova(mensaje);
-  console.log("Usuario:", mensaje);
+  const msg = req.query.m || "";
+  console.log("Usuario:", msg);
+  const respuesta = await procesarMensaje(msg);
   console.log("Nova:", respuesta);
   res.send(respuesta);
 });
 
-// ================= INICIO SERVIDOR =================
+// ================= INICIAR SERVIDOR =================
 app.listen(PORT, () => {
-  console.log(`Servidor Nova corriendo en puerto ${PORT}`);
+  console.log(`Servidor activo en puerto ${PORT}`);
 });
