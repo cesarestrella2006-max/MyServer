@@ -1,99 +1,49 @@
-// ================= LIBRERÍAS =================
-import express from 'express';
-import cors from 'cors';
-import { OpenAI } from 'openai';
+// ================= IMPORTS =================
+import express from "express";
+import cors from "cors";
+import bodyParser from "body-parser";
+import OpenAI from "openai";
 
-// ================= CONFIG =================
 const app = express();
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-const PORT = process.env.PORT || 3000;
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 
 // ================= OPENAI =================
-if (!process.env.OPENAI_API_KEY) {
-  console.error("ERROR: Debes configurar la variable de entorno OPENAI_API_KEY en Render.");
-  process.exit(1);
-}
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY, // Asegúrate de tener esta variable de entorno en Render
+});
 
 // ================= ESTADO =================
+let ultimaRespuesta = "";
 let estadoEmocional = "neutro";
 
 // ================= UTILIDADES =================
 function normalizar(t) {
-  t = t.toLowerCase();
-  t = t.replace(/á/g, "a").replace(/é/g, "e").replace(/í/g, "i");
-  t = t.replace(/ó/g, "o").replace(/ú/g, "u");
-  return t;
+  return t.toLowerCase()
+          .replace(/á/g,"a").replace(/é/g,"e")
+          .replace(/í/g,"i").replace(/ó/g,"o")
+          .replace(/ú/g,"u");
 }
 
-function respuestaAleatoria(lista) {
-  return lista[Math.floor(Math.random() * lista.length)];
-}
-
-// ================= INTELIGENCIA =================
-async function procesarMensaje(msg) {
+// Función para detectar emoción básica según palabras clave
+function detectarEmocion(msg) {
   msg = normalizar(msg);
-
-  const saludo = ["hola", "hey", "buenos", "buenas", "que tal", "holi"];
-  const cansancio = ["cansada","agotada","estresada","no puedo","harta","fatiga"];
+  const cansancio = ["cansada","agotada","estresada","fatiga","harta"];
   const ansiedad = ["no puedo respirar","ansiosa","me duele","pecho","nerviosa","ansiedad"];
+  const saludo = ["hola","hey","buenos","buenas","que tal","holi"];
   const despedida = ["adios","hasta luego","buenas noches","descansa"];
 
-  let respuesta = "Estoy aqui, cuentame un poco mas";
-
-  if (saludo.some(w => msg.includes(w))) {
-    estadoEmocional = "feliz";
-    respuesta = respuestaAleatoria([
-      "Hola, estoy aqui contigo 💙 cuentame como te sientes",
-      "Hey, me alegra verte, no estas sola",
-      "Hola, dime, que pasa por tu mente ahora mismo"
-    ]);
-  } else if (cansancio.some(w => msg.includes(w))) {
-    estadoEmocional = "triste";
-    respuesta = respuestaAleatoria([
-      "Siento que estes asi, a veces el cansancio pesa mucho, pero aqui estoy contigo",
-      "Respira, no tienes que cargar con todo sola",
-      "Es valido sentirse agotada, podemos ir poco a poco"
-    ]);
-  } else if (ansiedad.some(w => msg.includes(w))) {
-    estadoEmocional = "calma";
-    respuesta = respuestaAleatoria([
-      "Estoy aqui, vamos a respirar juntos, lento, no pasa nada",
-      "Tranquila, enfocate en mi voz, inhala despacio",
-      "No estas en peligro, vamos a calmarnos paso a paso"
-    ]);
-  } else if (despedida.some(w => msg.includes(w))) {
-    estadoEmocional = "dormido";
-    respuesta = respuestaAleatoria([
-      "Descansa, aqui estare cuando vuelvas",
-      "Buenas noches, cuidate mucho",
-      "Duerme tranquila, no estas sola"
-    ]);
-  }
-
-  // ================= OPCIONAL: OPENAI =================
-  // Si quieres que Nova use GPT-4 para respuestas más inteligentes:
-  /*
-  try {
-    const gpt = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: msg }],
-      max_tokens: 150,
-    });
-    respuesta = gpt.choices[0].message.content;
-  } catch (err) {
-    console.error("Error OpenAI:", err.message);
-  }
-  */
-
-  return respuesta;
+  if (cansancio.some(w => msg.includes(w))) return "triste";
+  if (ansiedad.some(w => msg.includes(w))) return "calma";
+  if (saludo.some(w => msg.includes(w))) return "feliz";
+  if (despedida.some(w => msg.includes(w))) return "dormido";
+  return "neutro";
 }
 
-// ================= PÁGINA WEB =================
+// ================= RUTAS =================
+
+// Página principal
 app.get("/", (req, res) => {
   const html = `
 <!DOCTYPE html>
@@ -101,45 +51,63 @@ app.get("/", (req, res) => {
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-body{background:#0f0f0f;color:white;font-family:sans-serif;}
-#chat{height:70vh;overflow:auto;border:1px solid #333;padding:10px;}
-input{width:80%;}
-button{width:18%;}
+body{background:#0f0f0f;color:white;font-family:sans-serif}
+#chat{height:70vh;overflow:auto;border:1px solid #333;padding:10px;margin-bottom:10px}
+input{width:80%;padding:5px;font-size:16px}
+button{width:18%;padding:5px;font-size:16px}
 </style>
 </head>
 <body>
 <h2>Nova 💙</h2>
 <div id="chat"></div>
-<input id="msg"><button onclick="enviar()">Enviar</button>
+<input id="msg" placeholder="Escribe algo"><button onclick="enviar()">Enviar</button>
 
 <script>
-function enviar(){
+async function enviar(){
   let m=document.getElementById("msg").value;
-  fetch("/msg?m="+encodeURIComponent(m))
-  .then(r=>r.text())
-  .then(t=>{
-    document.getElementById("chat").innerHTML += "<p><b>Tu:</b> "+m+"</p>";
-    document.getElementById("chat").innerHTML += "<p><b>Nova:</b> "+t+"</p>";
-    document.getElementById("msg").value="";
-    document.getElementById("chat").scrollTop = document.getElementById("chat").scrollHeight;
-  });
+  if(!m) return;
+  document.getElementById("chat").innerHTML += "<p><b>Tu:</b> "+m+"</p>";
+  document.getElementById("msg").value="";
+  const res = await fetch("/msg",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mensaje:m})});
+  const data = await res.json();
+  document.getElementById("chat").innerHTML += "<p><b>Nova:</b> "+data.respuesta+"</p>";
+  window.scrollTo(0,document.body.scrollHeight);
 }
 </script>
 </body>
-</html>`;
+</html>
+  `;
   res.send(html);
 });
 
-// ================= RUTA MENSAJE =================
-app.get("/msg", async (req, res) => {
-  const msg = req.query.m || "";
-  console.log("Usuario:", msg);
-  const respuesta = await procesarMensaje(msg);
-  console.log("Nova:", respuesta);
-  res.send(respuesta);
+// Ruta para recibir mensaje y enviar respuesta
+app.post("/msg", async (req, res) => {
+  try {
+    const msg = req.body.mensaje || req.body.mensajeTexto || "";
+    estadoEmocional = detectarEmocion(msg);
+
+    // Llamada a OpenAI para generar respuesta
+    const respuestaAI = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [{role:"user", content: msg}],
+      max_tokens: 150,
+      temperature: 0.8
+    });
+
+    const respuesta = respuestaAI.choices[0].message.content.trim();
+    ultimaRespuesta = respuesta;
+
+    console.log("Usuario:", msg);
+    console.log("Nova:", respuesta, "| Emoción:", estadoEmocional);
+
+    // Se puede mandar la emoción al ESP32 también si quieres
+    res.json({respuesta, emocion: estadoEmocional});
+  } catch (e) {
+    console.error(e);
+    res.json({respuesta: "Ups, algo salió mal 😅"});
+  }
 });
 
-// ================= INICIAR SERVIDOR =================
-app.listen(PORT, () => {
-  console.log(`Servidor activo en puerto ${PORT}`);
-});
+// ================= PUERTO =================
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));
