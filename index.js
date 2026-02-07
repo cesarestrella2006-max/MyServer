@@ -1,44 +1,42 @@
-const express = require("express");
-const { Configuration, OpenAIApi } = require("openai");
-const app = express();
+import express from "express";
+import OpenAI from "openai";
+import dotenv from "dotenv";
 
-// ================= OPENAI =================
-const configuration = new Configuration({
+dotenv.config();
+
+const app = express();
+const port = process.env.PORT || 3000;
+
+// Configura tu API de OpenAI
+const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
-const openai = new OpenAIApi(configuration);
 
-// ================= FUNCION PARA CHATGPT =================
-async function procesarMensajeConChatGPT(mensaje) {
-  if (!mensaje) return "No entendí tu mensaje 😅";
-  try {
-    const response = await openai.createChatCompletion({
-      model: "gpt-3.5-turbo",
-      messages: [
-        { role: "system", content: "Eres Nova, un asistente emocional con ojos animados." },
-        { role: "user", content: mensaje }
-      ],
-      max_tokens: 150
-    });
-    return response.data.choices[0].message.content;
-  } catch (err) {
-    console.error(err);
-    return "Ups, algo salió mal al procesar tu mensaje 😢";
-  }
-}
-
-// ================= ENDPOINT PARA FRONTEND =================
+// Endpoint para recibir mensaje de la web
 app.get("/msg", async (req, res) => {
   const mensaje = req.query.m || "";
   const respuesta = await procesarMensajeConChatGPT(mensaje);
   res.send(respuesta);
 });
 
-// ================= FRONTEND =================
+async function procesarMensajeConChatGPT(mensaje) {
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [{ role: "user", content: mensaje }],
+    });
+    return response.choices[0].message.content;
+  } catch (err) {
+    console.error(err);
+    return "Oops, algo salió mal 😅";
+  }
+}
+
+// Página web
 app.get("/", (req, res) => {
-  res.sendFile(__dirname + "/index.html"); // tu HTML de Nova
+  res.sendFile(new URL("./index.html", import.meta.url));
 });
 
-// ================= PUERTO =================
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));
+app.listen(port, () => {
+  console.log(`Servidor corriendo en puerto ${port}`);
+});
