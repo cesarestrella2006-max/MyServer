@@ -1,42 +1,60 @@
+// index.js
 import express from "express";
-import OpenAI from "openai";
+import path from "path";
+import { fileURLToPath } from "url";
 import dotenv from "dotenv";
+import OpenAI from "openai";
 
+// Configuración de dotenv
 dotenv.config();
 
-const app = express();
-const port = process.env.PORT || 3000;
+// Configuración de ES Modules para __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-// Configura tu API de OpenAI
+// Crear la app de Express
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Middleware para JSON
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Servir archivos estáticos (HTML, CSS, JS) desde la carpeta "public"
+app.use(express.static(path.join(__dirname, "public")));
+
+// Inicializar cliente de OpenAI
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-// Endpoint para recibir mensaje de la web
+// Ruta para enviar mensajes y recibir respuesta de ChatGPT
 app.get("/msg", async (req, res) => {
   const mensaje = req.query.m || "";
-  const respuesta = await procesarMensajeConChatGPT(mensaje);
-  res.send(respuesta);
-});
 
-async function procesarMensajeConChatGPT(mensaje) {
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: [{ role: "user", content: mensaje }],
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: "Eres Nova, un asistente emocional comprensivo, amigable y empático. Responde siempre con calidez y emojis si es apropiado." },
+        { role: "user", content: mensaje }
+      ]
     });
-    return response.choices[0].message.content;
-  } catch (err) {
-    console.error(err);
-    return "Oops, algo salió mal 😅";
-  }
-}
 
-// Página web
-app.get("/", (req, res) => {
-  res.sendFile(new URL("./index.html", import.meta.url));
+    const respuesta = completion.choices[0].message.content;
+    res.send(respuesta);
+  } catch (error) {
+    console.error("Error en OpenAI:", error);
+    res.status(500).send("Error al procesar el mensaje");
+  }
 });
 
-app.listen(port, () => {
-  console.log(`Servidor corriendo en puerto ${port}`);
+// Ruta principal para servir el HTML de Nova
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
+// Iniciar servidor
+app.listen(PORT, () => {
+  console.log(`Servidor corriendo en puerto ${PORT}`);
 });
